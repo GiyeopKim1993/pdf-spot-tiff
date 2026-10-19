@@ -1,6 +1,6 @@
-import {openPDF,raster,maskData} from './render.js';
+import {openPDF,rasterPixels} from './render.js';
 import {analyze,filteredPDF} from './pdf-engine.js';
-import {encodeTIFF} from './tiff.js';
+import {encodeTIFFBlob} from './tiff.js';
 import {originalResolutions} from './resolution.js';
 const $=id=>document.getElementById(id);
 let bytes,analysis,fileName,generation=0,busy=false,urls=[];
@@ -54,34 +54,32 @@ $('convert').addEventListener('click',async()=>{
     }
     for(const index of pages){
       const dpi=original?original[index-1].dpi:Number(resolution);
+      const viewport=(await base.getPage(index)).getViewport({scale:dpi/72});
+      if(Math.ceil(viewport.width)*Math.ceil(viewport.height)*(3+analysis.channels.length)>0xffffffff-65536)
+        throw new Error('이 페이지는 Classic TIFF 형식의 4GB 파일 한도를 초과합니다.');
       status(`${index} / ${analysis.pageCount} 페이지를 렌더링하고 있습니다…`);
-      const image=await raster(base,index,dpi),pixels=image.width*image.height;
-      if(pixels*(3+analysis.channels.length)>256*1024*1024)throw new Error('출력 채널 데이터가 256MB를 초과합니다. DPI를 낮춰 주세요.');
-      const rgb=new Uint8Array(pixels*3);
-      for(let i=0;i<pixels;i++)rgb.set(image.data.subarray(i*4,i*4+3),i*3);
+      const image=await rasterPixels(base,index,dpi),rgb=image.data;
       const channels=[];
       for(const variant of variants){
         status(`${index}페이지 · ${variant.channel.name} 채널 추출 중…`);
         let data;
-        if(variant.ink)data=maskData(await raster(variant.ink,index,dpi),false);
+        if(variant.ink)data=(await rasterPixels(variant.ink,index,dpi,'ink')).data;
         if(variant.layer){
-          const layer=maskData(await raster(variant.layer,index,dpi,true),true);
+          const layer=(await rasterPixels(variant.layer,index,dpi,'alpha')).data;
           if(data)for(let i=0;i<layer.length;i++)data[i]=Math.min(data[i],layer[i]);
           else data=layer;
         }
         channels.push({name:variant.channel.name,data});
       }
       status(`${index}페이지 TIFF 파일을 생성하고 있습니다…`);
-      const tiff=encodeTIFF({width:image.width,height:image.height,rgb,channels,dpi});
-      const url=URL.createObjectURL(new Blob([tiff],{type:'image/tiff'}));urls.push(url);
+      const tiff=await encodeTIFFBlob({width:image.width,height:image.height,rgb,channels,dpi});
+      const url=URL.createObjectURL(tiff);urls.push(url);
       const row=document.createElement('article');row.className='result';
       const info=document.createElement('div'),title=document.createElement('strong'),detail=document.createElement('p'),link=document.createElement('a');
       const dpiLabel=original?(original[index-1].fallback?`${dpi} DPI · 이미지 없음, 기본값`:`${dpi} DPI · 원본 이미지 기준`):`${dpi} DPI`;
       title.textContent=`${index}페이지`;detail.textContent=`${image.width} × ${image.height} px · ${dpiLabel} · RGB + 별색 ${channels.length}개`;
-      link.className='download';link.href=url;link.download=`${fileName}-${String(index).padStart(4,'0')}.tif`;link.textContent=`TIFF 다운로드 · ${(tiff.length/1024/1024).toFixed(1)} MB`;
-      const preview=document.createElement('canvas'),scale=Math.min(240/image.width,320/image.height,1);
-      preview.width=Math.round(image.width*scale);preview.height=Math.round(image.height*scale);preview.getContext('2d').drawImage(image.canvas,0,0,preview.width,preview.height);
-      image.canvas.width=image.canvas.height=0;
+      link.className='download';link.href=url;link.download=`${fileName}-${String(index).padStart(4,'0')}.tif`;link.textContent=`TIFF 다운로드 · ${(tiff.size/1024/1024).toFixed(1)} MB`;
+      const preview=image.canvas;
       info.append(title,detail,link);row.append(preview,info);$('results').append(row);
       await new Promise(resolve=>setTimeout(resolve,0));
     }

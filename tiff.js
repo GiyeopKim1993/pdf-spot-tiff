@@ -29,12 +29,11 @@ export function photoshopResources(channels) {
     resource(1007,concat(display)),resource(1077,concat(modern)),resource(1053,concat(ids))]);
 }
 
-export function encodeTIFF({width,height,rgb,channels=[],dpi=300}) {
+function prepareTIFF({width,height,rgb,channels=[],dpi=300}) {
   if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1)throw new Error('Invalid dimensions');
   const pixels=width*height,samples=3+channels.length;
   if(rgb.length!==pixels*3 || channels.some(c=>c.data.length!==pixels))throw new Error('Channel size mismatch');
   const imageLength=pixels*samples;
-  if(imageLength>512*1024*1024)throw new Error('TIFF가 512MB를 초과합니다. DPI를 낮춰 주세요.');
   const entries=[];
   const short=(tag,values)=>{const data=new Uint8Array(values.length*2),v=new DataView(data.buffer);values.forEach((x,i)=>v.setUint16(i*2,x,true));entries.push({tag,type:3,count:values.length,data});};
   // Explicit little endian encoding also supports big endian host machines.
@@ -54,8 +53,9 @@ export function encodeTIFF({width,height,rgb,channels=[],dpi=300}) {
   let cursor=8+2+entries.length*12+4;
   for(const entry of entries){if(entry.data.length>4){entry.offset=cursor;cursor+=entry.data.length+(entry.data.length%2);}}
   const imageOffset=cursor;
+  if(!Number.isSafeInteger(imageLength)||imageOffset+imageLength>0xffffffff)throw new Error('Classic TIFF 형식 한도인 4GB를 초과합니다.');
   new DataView(entries.find(e=>e.tag===273).data.buffer).setUint32(0,imageOffset,true);
-  const buffer=new ArrayBuffer(imageOffset+imageLength),view=new DataView(buffer),bytes=new Uint8Array(buffer);
+  const buffer=new ArrayBuffer(imageOffset),view=new DataView(buffer),bytes=new Uint8Array(buffer);
   bytes.set([73,73,42,0]);view.setUint32(4,8,true);view.setUint16(8,entries.length,true);
   entries.forEach((entry,i)=>{
     const offset=10+i*12;
@@ -63,9 +63,28 @@ export function encodeTIFF({width,height,rgb,channels=[],dpi=300}) {
     if(entry.offset){view.setUint32(offset+8,entry.offset,true);bytes.set(entry.data,entry.offset);}
     else bytes.set(entry.data,offset+8);
   });
-  for(let p=0;p<pixels;p++){
-    const dest=imageOffset+p*samples;bytes[dest]=rgb[p*3];bytes[dest+1]=rgb[p*3+1];bytes[dest+2]=rgb[p*3+2];
-    channels.forEach((c,i)=>bytes[dest+3+i]=c.data[p]);
+  return {header:bytes,pixels,samples,imageLength};
+}
+function writePixels(bytes,start,end,rgb,channels,samples,offset=0){
+  for(let p=start;p<end;p++){
+    const dest=offset+(p-start)*samples;bytes[dest]=rgb[p*3];bytes[dest+1]=rgb[p*3+1];bytes[dest+2]=rgb[p*3+2];
+    for(let i=0;i<channels.length;i++)bytes[dest+3+i]=channels[i].data[p];
   }
+}
+export function encodeTIFF(options){
+  const {header,pixels,samples,imageLength}=prepareTIFF(options);
+  const bytes=new Uint8Array(header.length+imageLength);bytes.set(header);
+  writePixels(bytes,0,pixels,options.rgb,options.channels??[],samples,header.length);
   return bytes;
+}
+export async function encodeTIFFBlob(options){
+  const {header,pixels,samples}=prepareTIFF(options),parts=[new Blob([header])];
+  const chunkPixels=Math.max(1,Math.floor(4*1024*1024/samples));
+  for(let start=0;start<pixels;start+=chunkPixels){
+    const end=Math.min(pixels,start+chunkPixels),chunk=new Uint8Array((end-start)*samples);
+    writePixels(chunk,start,end,options.rgb,options.channels??[],samples);
+    parts.push(new Blob([chunk]));
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  return new Blob(parts,{type:'image/tiff'});
 }
