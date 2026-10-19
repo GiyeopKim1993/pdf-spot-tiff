@@ -18,7 +18,7 @@ async function load(file){
     if(token!==generation)return;
     bytes=data;analysis=result;fileName=file.name.replace(/\.pdf$/i,'');
     $('count').textContent=`${result.channels.length}개`;
-    if(!result.channels.length)$('channels').textContent='별색/White/Spot 레이어가 없습니다. 일반 RGB TIFF로 저장합니다.';
+    if(!result.channels.length)$('channels').textContent='별색/White/Spot 레이어가 없습니다. CMYK ZIP TIFF로 저장합니다.';
     for(const channel of result.channels){
       const row=document.createElement('div');row.className='channel';
       const swatch=document.createElement('span');swatch.className='swatch';swatch.style.background=/white/i.test(channel.name)?'#fff':'#ff00ff';
@@ -54,9 +54,6 @@ $('convert').addEventListener('click',async()=>{
     }
     for(const index of pages){
       const dpi=original?original[index-1].dpi:Number(resolution);
-      const viewport=(await base.getPage(index)).getViewport({scale:dpi/72});
-      if(Math.ceil(viewport.width)*Math.ceil(viewport.height)*(3+analysis.channels.length)>0xffffffff-65536)
-        throw new Error('이 페이지는 Classic TIFF 형식의 4GB 파일 한도를 초과합니다.');
       status(`${index} / ${analysis.pageCount} 페이지를 렌더링하고 있습니다…`);
       const image=await rasterPixels(base,index,dpi),rgb=image.data;
       const channels=[];
@@ -72,13 +69,15 @@ $('convert').addEventListener('click',async()=>{
         channels.push({name:variant.channel.name,data});
       }
       status(`${index}페이지 TIFF 파일을 생성하고 있습니다…`);
-      const tiff=await encodeTIFFBlob({width:image.width,height:image.height,rgb,channels,dpi});
+      const tiff=await encodeTIFFBlob({width:image.width,height:image.height,rgb,channels,dpi,colorMode:'cmyk',zip:true,
+        onProgress:(done,total)=>status(`${index}페이지 CMYK TIFF · ZIP 압축 ${Math.round(done/total*100)}%`)});
       const url=URL.createObjectURL(tiff);urls.push(url);
       const row=document.createElement('article');row.className='result';
       const info=document.createElement('div'),title=document.createElement('strong'),detail=document.createElement('p'),link=document.createElement('a');
       const dpiLabel=original?(original[index-1].fallback?`${dpi} DPI · 이미지 없음, 기본값`:`${dpi} DPI · 원본 이미지 기준`):`${dpi} DPI`;
-      title.textContent=`${index}페이지`;detail.textContent=`${image.width} × ${image.height} px · ${dpiLabel} · RGB + 별색 ${channels.length}개`;
-      link.className='download';link.href=url;link.download=`${fileName}-${String(index).padStart(4,'0')}.tif`;link.textContent=`TIFF 다운로드 · ${(tiff.size/1024/1024).toFixed(1)} MB`;
+      title.textContent=`${index}페이지`;detail.textContent=`${image.width} × ${image.height} px · ${dpiLabel} · CMYK + 별색 ${channels.length}개 · ZIP 무손실`;
+      const fileSize=tiff.size<1024*1024?`${(tiff.size/1024).toFixed(1)} KB`:`${(tiff.size/1024/1024).toFixed(1)} MB`;
+      link.className='download';link.href=url;link.download=`${fileName}-${String(index).padStart(4,'0')}.tif`;link.textContent=`TIFF 다운로드 · ${fileSize}`;
       const preview=image.canvas;
       info.append(title,detail,link);row.append(preview,info);$('results').append(row);
       await new Promise(resolve=>setTimeout(resolve,0));

@@ -12,7 +12,7 @@ PDF 업로드, API 호출, Photoshop 자동화, Ghostscript, Python, WebAssembly
 - 동일 이름의 별색과 레이어는 한 채널로 합칩니다(픽셀별 최대 잉크 농도).
 - 이름이 같은 여러 레이어도 한 채널로 합칩니다.
 - 채널 이름과 한글을 보존합니다. 채널별 검정=잉크 100%, 흰색=잉크 0%입니다.
-- 기본 RGB 이미지에서 해당 별색 및 레이어를 제외합니다.
+- 기본 이미지에서 해당 별색 및 레이어를 제외하고, CMYK 4채널로 저장합니다.
 - 원본 유지 / 72 / 150 / 300 / 600 / 1200 / 1440 DPI, 페이지 선택, 페이지별 다운로드를 지원합니다.
 - 원본 유지는 각 페이지에 배치된 이미지의 픽셀 수와 실제 크기(회전/Form/UserUnit 포함)로 유효 DPI를 계산합니다. 여러 해상도는 가장 높은 DPI를 사용하고, 벡터/텍스트만 있으면 300 DPI로 저장하며 결과에 표시합니다. PDF 자체에는 일반적으로 단일 원본 DPI가 없습니다.
 
@@ -32,8 +32,8 @@ PDF 업로드, API 호출, Photoshop 자동화, Ghostscript, Python, WebAssembly
 
 ## TIFF 형식과 Photoshop 호환성
 
-8-bit RGB + 별색 샘플을 가진 classic TIFF를 JavaScript로 직접 작성합니다.
-무손실 비압축, chunky layout, ExtraSamples=0(비지정 추가 샘플)을 사용합니다.
+8-bit CMYK 4채널 + 별색 샘플을 가진 classic TIFF를 JavaScript로 직접 작성합니다.
+ZIP(Deflate) 무손실 압축, 수평 Predictor 2, 다중 strip, chunky layout, ExtraSamples=0(비지정 추가 샘플)을 사용합니다.
 TIFF tag 34377에 Photoshop Image Resources를 기록합니다.
 
 - 1006: Pascal 채널 이름
@@ -51,7 +51,7 @@ TIFF는 Adobe Photoshop 파일 형식 규격에 맞게 구성하며, 테스트�
 
 ## 현재 지원 범위
 
-기본 색상은 PDF.js의 RGB 렌더링 결과입니다. CMYK 수치 및 출력 ICC를 그대로 유지하는
+저장 색상은 CMYK입니다. PDF.js가 렌더링한 RGB 픽셀을 수학적 CMYK 분해로 변환하므로 출력 ICC 프로파일은 포함하지 않습니다. CMYK 수치 및 출력 ICC를 그대로 유지하는
 인쇄용 색상 관리 변환은 지원하지 않습니다. Illustrator 편집 정보에만 저장된 레이어나
 원본 Photoshop 채널은 PDF의 실제 `Separation`/`DeviceN` 또는 OCG로 존재해야 감지됩니다.
 
@@ -70,7 +70,7 @@ TIFF는 Adobe Photoshop 파일 형식 규격에 맞게 구성하며, 테스트�
 
 ## 검증
 
-자동 테스트 18개 및 브라우저 픽셀 검증 17개 통과. 8,000 × 4,001픽셀 페이지의 91.6MB TIFF 생성 확인.
+자동 테스트 21개 통과. CMYK ZIP 다중 strip을 별도 zlib 디코더로 풀어 프로세스/별색 샘플의 일치를 확인했습니다. 브라우저 픽셀 검증 17개 및 대형 페이지 타일 변환도 확인했습니다.
 배포 버전은 폴더 구조를 평탄화하고 CMap/표준 폰트만 로컬 `font-data.json`에 묶었습니다.
 모든 PDF 변환 코드는 읽고 수정할 수 있는 JavaScript 소스입니다.
 
@@ -82,3 +82,5 @@ TIFF는 Adobe Photoshop 파일 형식 규격에 맞게 구성하며, 테스트�
 
 배포 시 라이브러리와 라이선스 파일을 함께 유지하세요.
 
+
+ZIP 압축은 Adobe TIFF compression=8(zlib Deflate)을 사용합니다. TIFF JPEG 압축은 Photoshop에서 RGB/그레이스케일용이므로 CMYK+별색에는 사용하지 않습니다. 파일은 .tif이며 .psd로 확장자만 바꾸지 않습니다. 입력은 PDF로 유지합니다.
