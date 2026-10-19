@@ -33,7 +33,7 @@ PDF 업로드, API 호출, Photoshop 자동화, Ghostscript, Python, WebAssembly
 ## TIFF 형식과 Photoshop 호환성
 
 8-bit CMYK 4채널 + 별색 샘플을 가진 classic TIFF를 JavaScript로 직접 작성합니다.
-ZIP(Deflate) 무손실 압축, 수평 Predictor 2, 다중 strip, chunky layout, ExtraSamples=0(비지정 추가 샘플)을 사용합니다.
+LZW(기본) / ZIP(Deflate) 무손실 압축, 수평 Predictor 2, 다중 strip, chunky layout, ExtraSamples=0(비지정 추가 샘플)을 사용합니다.
 TIFF tag 34377에 Photoshop Image Resources를 기록합니다.
 
 - 1006: Pascal 채널 이름
@@ -70,7 +70,7 @@ TIFF는 Adobe Photoshop 파일 형식 규격에 맞게 구성하며, 테스트�
 
 ## 검증
 
-자동 테스트 21개 통과. CMYK ZIP 다중 strip을 별도 zlib 디코더로 풀어 프로세스/별색 샘플의 일치를 확인했습니다. 브라우저 픽셀 검증 17개 및 대형 페이지 타일 변환도 확인했습니다.
+자동 테스트 23개 통과. CMYK ZIP 다중 strip을 별도 zlib 디코더로 풀어 프로세스/별색 샘플의 일치를 확인했습니다. 브라우저 픽셀 검증 17개 및 대형 페이지 타일 변환도 확인했습니다.
 배포 버전은 폴더 구조를 평탄화하고 CMap/표준 폰트만 로컬 `font-data.json`에 묶었습니다.
 모든 PDF 변환 코드는 읽고 수정할 수 있는 JavaScript 소스입니다.
 
@@ -83,4 +83,5 @@ TIFF는 Adobe Photoshop 파일 형식 규격에 맞게 구성하며, 테스트�
 배포 시 라이브러리와 라이선스 파일을 함께 유지하세요.
 
 
-ZIP 압축은 Adobe TIFF compression=8(zlib Deflate)을 사용합니다. TIFF JPEG 압축은 Photoshop에서 RGB/그레이스케일용이므로 CMYK+별색에는 사용하지 않습니다. 파일은 .tif이며 .psd로 확장자만 바꾸지 않습니다. 입력은 PDF로 유지합니다.
+기본 압축은 LZW(TIFF compression=5)입니다. ZIP(Adobe Deflate, compression=8)과 비압축도 선택할 수 있습니다. TIFF JPEG 압축은 Photoshop에서 RGB/그레이스케일용이므로 CMYK+별색에는 사용하지 않습니다. 파일은 .tif이며 .psd로 확장자만 바꾸지 않습니다. 입력은 PDF로 유지합니다. RIP별 별색/압축 지원이 다르므로 해당 RIP에서 실제 가져오기와 채널 매핑을 확인해야 합니다.
+

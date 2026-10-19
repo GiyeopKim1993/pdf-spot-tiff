@@ -6,7 +6,7 @@ const $=id=>document.getElementById(id);
 let bytes,analysis,fileName,generation=0,busy=false,urls=[];
 function status(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
 function clearResults(){urls.forEach(URL.revokeObjectURL);urls=[];$('results').replaceChildren();}
-function setBusy(value){busy=value;$('file').disabled=value;$('dpi').disabled=value;$('pages').disabled=value;$('convert').disabled=value||!analysis;}
+function setBusy(value){busy=value;$('file').disabled=value;$('dpi').disabled=value;$('pages').disabled=value;$('compression').disabled=value;$('convert').disabled=value||!analysis;}
 async function load(file){
   if(!file||busy)return;
   const token=++generation;analysis=null;$('convert').disabled=true;clearResults();$('channels').replaceChildren();$('count').textContent='0개';
@@ -18,7 +18,7 @@ async function load(file){
     if(token!==generation)return;
     bytes=data;analysis=result;fileName=file.name.replace(/\.pdf$/i,'');
     $('count').textContent=`${result.channels.length}개`;
-    if(!result.channels.length)$('channels').textContent='별색/White/Spot 레이어가 없습니다. CMYK ZIP TIFF로 저장합니다.';
+    if(!result.channels.length)$('channels').textContent='별색/White/Spot 레이어가 없습니다. CMYK TIFF로 저장합니다.';
     for(const channel of result.channels){
       const row=document.createElement('div');row.className='channel';
       const swatch=document.createElement('span');swatch.className='swatch';swatch.style.background=/white/i.test(channel.name)?'#fff':'#ff00ff';
@@ -38,6 +38,7 @@ for(const name of ['dragover','dragleave','drop'])$('drop').addEventListener(nam
 $('convert').addEventListener('click',async()=>{
   if(!analysis||busy)return;setBusy(true);clearResults();
   const resolution=$('dpi').value,selected=$('pages').value;
+  const compressionMethod=$('compression').value,compressionLabel={lzw:'LZW 무손실',zip:'ZIP 무손실',none:'비압축'}[compressionMethod];
   const pages=selected==='all'?Array.from({length:analysis.pageCount},(_,i)=>i+1):[Number(selected)];
   const documents=[];
   try{
@@ -69,13 +70,13 @@ $('convert').addEventListener('click',async()=>{
         channels.push({name:variant.channel.name,data});
       }
       status(`${index}페이지 TIFF 파일을 생성하고 있습니다…`);
-      const tiff=await encodeTIFFBlob({width:image.width,height:image.height,rgb,channels,dpi,colorMode:'cmyk',zip:true,
-        onProgress:(done,total)=>status(`${index}페이지 CMYK TIFF · ZIP 압축 ${Math.round(done/total*100)}%`)});
+      const tiff=await encodeTIFFBlob({width:image.width,height:image.height,rgb,channels,dpi,colorMode:'cmyk',compressionMethod,
+        onProgress:(done,total)=>status(`${index}페이지 CMYK TIFF · ${compressionLabel} ${Math.round(done/total*100)}%`)});
       const url=URL.createObjectURL(tiff);urls.push(url);
       const row=document.createElement('article');row.className='result';
       const info=document.createElement('div'),title=document.createElement('strong'),detail=document.createElement('p'),link=document.createElement('a');
       const dpiLabel=original?(original[index-1].fallback?`${dpi} DPI · 이미지 없음, 기본값`:`${dpi} DPI · 원본 이미지 기준`):`${dpi} DPI`;
-      title.textContent=`${index}페이지`;detail.textContent=`${image.width} × ${image.height} px · ${dpiLabel} · CMYK + 별색 ${channels.length}개 · ZIP 무손실`;
+      title.textContent=`${index}페이지`;detail.textContent=`${image.width} × ${image.height} px · ${dpiLabel} · CMYK + 별색 ${channels.length}개 · ${compressionLabel}`;
       const fileSize=tiff.size<1024*1024?`${(tiff.size/1024).toFixed(1)} KB`:`${(tiff.size/1024/1024).toFixed(1)} MB`;
       link.className='download';link.href=url;link.download=`${fileName}-${String(index).padStart(4,'0')}.tif`;link.textContent=`TIFF 다운로드 · ${fileSize}`;
       const preview=image.canvas;

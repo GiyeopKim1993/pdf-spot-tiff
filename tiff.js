@@ -1,4 +1,5 @@
-// Classic TIFF, 8-bit RGB + extra samples. Photoshop resources identify the
+import {tiffLZW} from './lzw.js';
+// Classic TIFF, 8-bit RGB/CMYK + extra samples. Photoshop resources identify the
 // extra samples as spot inks (kind=2), rather than transparency/alpha masks.
 const encoder = new TextEncoder();
 function concat(parts) {
@@ -94,8 +95,10 @@ export function encodeTIFF(options){
   return bytes;
 }
 export async function encodeTIFFBlob(options){
-  if(options.zip){
-    if(typeof CompressionStream==='undefined')throw new Error('이 브라우저는 ZIP 압축을 지원하지 않습니다. 최신 브라우저를 사용해 주세요.');
+  const method=options.compressionMethod??(options.zip?'zip':'none');
+  if(!['lzw','zip','none'].includes(method))throw new Error('Unsupported TIFF compression');
+  if(method!=='none'){
+    if(method==='zip'&&typeof CompressionStream==='undefined')throw new Error('이 브라우저는 ZIP 압축을 지원하지 않습니다. LZW를 선택해 주세요.');
     const {width,height,rgb,channels=[],colorMode='rgb'}=options,samples=(colorMode==='cmyk'?4:3)+channels.length;
     if(!Number.isInteger(width)||!Number.isInteger(height)||width<1||height<1||rgb.length!==width*height*3||channels.some(c=>c.data.length!==width*height))throw new Error('Channel size mismatch');
     const rowsPerStrip=Math.max(1,Math.floor(4*1024*1024/(width*samples))),parts=[],counts=[];
@@ -106,13 +109,13 @@ export async function encodeTIFFBlob(options){
       for(let row=0;row<rows;row++)for(let i=width*samples-1;i>=samples;i--){
         const p=row*width*samples+i;chunk[p]=(chunk[p]-chunk[p-samples]+256)&255;
       }
-      const compressed=await new Response(new Blob([chunk]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer();
+      const compressed=method==='lzw'?tiffLZW(chunk):await new Response(new Blob([chunk]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer();
       parts.push(new Blob([compressed]));counts.push(compressed.byteLength);
       if(counts.reduce((n,x)=>n+x,0)>0xffffffff-65536)throw new Error('압축 후 TIFF 파일이 4GB 형식 한도를 초과합니다.');
       options.onProgress?.(Math.min(height,y+rows),height);
       await new Promise(resolve=>setTimeout(resolve,0));
     }
-    const {header}=prepareTIFF({...options,compression:8,stripByteCounts:counts,rowsPerStrip,predictor:true});
+    const {header}=prepareTIFF({...options,compression:method==='lzw'?5:8,stripByteCounts:counts,rowsPerStrip,predictor:true});
     return new Blob([header,...parts],{type:'image/tiff'});
   }
   const {header,pixels,samples}=prepareTIFF(options),parts=[new Blob([header])];
