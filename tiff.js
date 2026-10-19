@@ -39,7 +39,7 @@ export function encodeTIFF({width,height,rgb,channels=[],dpi=300}) {
   const short=(tag,values)=>{const data=new Uint8Array(values.length*2),v=new DataView(data.buffer);values.forEach((x,i)=>v.setUint16(i*2,x,true));entries.push({tag,type:3,count:values.length,data});};
   // Explicit little endian encoding also supports big endian host machines.
   const long=(tag,value)=>{const data=new Uint8Array(4);new DataView(data.buffer).setUint32(0,value,true);entries.push({tag,type:4,count:1,data});};
-  const rational=(tag,value)=>{const data=new Uint8Array(8),v=new DataView(data.buffer);v.setUint32(0,value,true);v.setUint32(4,1,true);entries.push({tag,type:5,count:1,data});};
+  const rational=(tag,value)=>{const data=new Uint8Array(8),v=new DataView(data.buffer);v.setUint32(0,Math.round(value*1000),true);v.setUint32(4,1000,true);entries.push({tag,type:5,count:1,data});};
   long(256,width);long(257,height);short(258,Array(samples).fill(8));short(259,[1]);short(262,[2]);
   long(273,0);short(277,[samples]);long(278,height);long(279,imageLength);
   rational(282,dpi);rational(283,dpi);short(284,[1]);short(296,[2]);
